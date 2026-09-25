@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment: { POSTGRES_DB: requestbinx, POSTGRES_USER: requestbinx, POSTGRES_PASSWORD: requestbinx }
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U requestbinx -d requestbinx"], interval: 5s, timeout: 5s, retries: 10 }
+  redis:
+    image: redis:7-alpine
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 5s, retries: 10 }
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://requestbinx:requestbinx@postgres:5432/requestbinx"
+      JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in .env}"
+      BODY_STORAGE_PATH: /data/bodies
+    volumes: [body_data:/data/bodies]
+    ports: ["8000:8000"]
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_healthy } }
+  worker:
+    build: ./api
+    command: ["python", "-m", "app.worker"]
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://requestbinx:requestbinx@postgres:5432/requestbinx"
+      JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in .env}"
+      BODY_STORAGE_PATH: /data/bodies
+    volumes: [body_data:/data/bodies]
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_healthy } }
+  web:
+    build: ./web
+    environment: { NEXT_PUBLIC_API_URL: http://localhost:8000 }
+    ports: ["3000:3000"]
+    depends_on: [api]
+volumes: { postgres_data: {}, body_data: {} }

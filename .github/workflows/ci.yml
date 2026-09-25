@@ -1,0 +1,29 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: api } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.13' }
+      - run: pip install -r requirements.txt
+      - run: pytest
+  web:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package.json }
+      - run: npm install
+      - run: npm run typecheck
+      - run: npm run build
+  docker:
+    runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: ci-only-secret-that-is-long-enough-for-compose
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose build

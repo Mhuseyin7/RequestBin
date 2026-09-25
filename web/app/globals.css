@@ -1,0 +1,4 @@
+@tailwind base; @tailwind components; @tailwind utilities;
+:root { color-scheme: dark; } * { box-sizing:border-box; }
+body { margin:0; background:#09090b; color:#e4e4e7; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+button,input { font:inherit; } button { cursor:pointer; }
