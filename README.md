@@ -18,6 +18,7 @@ Bir payment provider, CRM, form service veya kendi backend'in webhook gÃ¶nderdiÄ
 - PostgreSQL persistence, filesystem body storage ve automatic retention cleanup
 - Docker Compose ile self-hosted deployment
 - Hashed API keys, organization membership ve role-aware team management
+- Optional TOTP authenticator MFA for account login
 - Declarative conditional forwarding, transformation pipeline ve retryable delivery logs
 - Sanitized cURL/JavaScript/Python/PHP/Go snippets, request export ve compare API
 
