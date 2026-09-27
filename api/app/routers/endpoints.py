@@ -7,6 +7,7 @@ from ..models import CapturedRequest, Endpoint
 from ..schemas import EndpointIn
 from ..security import current_user_id, token
 from ..services.redaction import redact_headers
+from ..services.audit import audit
 
 router = APIRouter(prefix="/api/v1", tags=["endpoints"])
 async def owned(endpoint_id: uuid.UUID, user_id: str, db: AsyncSession) -> Endpoint:
@@ -20,7 +21,7 @@ async def list_endpoints(user_id: str = Depends(current_user_id), db: AsyncSessi
 @router.post("/endpoints", status_code=201)
 async def create_endpoint(payload: EndpointIn, user_id: str = Depends(current_user_id), db: AsyncSession = Depends(get_db)):
     endpoint = Endpoint(owner_id=uuid.UUID(user_id), name=payload.name, token=token(), max_body_size=payload.max_body_size, expires_at=payload.expires_at)
-    db.add(endpoint); await db.commit(); await db.refresh(endpoint)
+    db.add(endpoint); await db.flush(); await audit(db, user_id, "endpoint.create", "endpoint", str(endpoint.id), {"name": endpoint.name}); await db.commit(); await db.refresh(endpoint)
     return {"id": str(endpoint.id), "name": endpoint.name, "token": endpoint.token, "receive_url": f"/h/{endpoint.token}"}
 @router.get("/endpoints/{endpoint_id}/requests")
 async def requests(endpoint_id: uuid.UUID, user_id: str = Depends(current_user_id), db: AsyncSession = Depends(get_db)):
@@ -32,3 +33,6 @@ async def request_detail(request_id: uuid.UUID, user_id: str = Depends(current_u
     row = await db.scalar(select(CapturedRequest).join(Endpoint).where(CapturedRequest.id == request_id, Endpoint.owner_id == uuid.UUID(user_id)))
     if not row: raise HTTPException(404, "Request not found")
     return {"id":str(row.id), "method":row.method, "path":row.path, "query":row.query, "headers":redact_headers(row.headers), "cookies":row.cookies, "body":row.body_preview, "body_size":row.body_size, "source_ip":row.source_ip, "content_type":row.content_type, "protocol":row.protocol, "user_agent":row.user_agent, "received_at":row.received_at}
+@router.delete("/endpoints/{endpoint_id}", status_code=204)
+async def delete_endpoint(endpoint_id: uuid.UUID, user_id: str = Depends(current_user_id), db: AsyncSession = Depends(get_db)):
+    endpoint = await owned(endpoint_id, user_id, db); await audit(db, user_id, "endpoint.delete", "endpoint", str(endpoint.id)); await db.delete(endpoint); await db.commit()

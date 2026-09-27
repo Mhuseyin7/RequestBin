@@ -17,6 +17,9 @@ Bir payment provider, CRM, form service veya kendi backend'in webhook gönderdi�
 - Sensitive header redaction (`Authorization`, `Cookie`, `X-API-Key` vb.)
 - PostgreSQL persistence, filesystem body storage ve automatic retention cleanup
 - Docker Compose ile self-hosted deployment
+- Hashed API keys, organization membership ve role-aware team management
+- Declarative conditional forwarding, transformation pipeline ve retryable delivery logs
+- Sanitized cURL/JavaScript/Python/PHP/Go snippets, request export ve compare API
 
 ## Quick Start
 
@@ -97,6 +100,12 @@ Production ortamında TLS reverse proxy kullanın, güçlü bir `JWT_SECRET` tan
 
 > `ALLOW_UNSAFE_OUTBOUND=true` yalnızca tamamen güvenilir internal self-hosted environment'larda kullanılmalıdır.
 
+## API Modules
+
+OpenAPI documentation `http://localhost:8000/docs` adresindedir. API; auth, endpoints, captured request search/export/compare, replay, hashed API keys, organizations ve forwarding rules için versioned `/api/v1` endpoints sunar.
+
+Forwarding conditions declarative JSON kullanır; örneğin `{ "source": "header", "path": "x-event", "equals": "payment.completed" }`. Transform operations yalnızca izin verilen `add_header`, `remove_header`, `set_field` ve `rename_field` işlemleridir; custom code veya `eval` çalıştırılmaz.
+
 ## Development
 
 ### API
@@ -115,10 +124,6 @@ npm install
 npm run typecheck
 npm run build
 ```
-
-## Project Status
-
-Bu repository aktif bir open-source foundation'dır. Mevcut release; authentication, endpoint creation, request capture, realtime inspector, replay security ve retention worker içerir. Forwarding rules, organization/RBAC, API keys, distributed rate limiting, search/compare/export gibi gelişmiş modules roadmap kapsamındadır.
 
 ## Contributing
 

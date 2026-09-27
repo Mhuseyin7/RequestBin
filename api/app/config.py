@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     allow_unsafe_outbound: bool = False
     anonymous_bins_enabled: bool = False
     body_storage_path: str = "/data/bodies"
+    redis_url: str = "redis://redis:6379/0"
+    rate_limit_receive_per_minute: int = 120
+    rate_limit_auth_per_minute: int = 10
+    public_base_url: str = "http://localhost:8000"
 
 @lru_cache
 def get_settings() -> Settings:

@@ -14,6 +14,19 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+class Organization(Base):
+    __tablename__ = "organizations"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+class Membership(Base):
+    __tablename__ = "memberships"
+    __table_args__ = (UniqueConstraint("organization_id", "user_id", name="uq_membership"),)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
+    role: Mapped[str] = mapped_column(String(20), default="OWNER")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 class Endpoint(Base):
     __tablename__ = "endpoints"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -54,3 +67,48 @@ class Replay(Base):
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    prefix: Mapped[str] = mapped_column(String(16), index=True)
+    key_hash: Mapped[str] = mapped_column(String(255), unique=True)
+    scopes: Mapped[list] = mapped_column(Json, default=list)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+class ForwardingRule(Base):
+    __tablename__ = "forwarding_rules"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    endpoint_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("endpoints.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    target_url: Mapped[str] = mapped_column(String(2048))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    condition: Mapped[dict] = mapped_column(Json, default=dict)
+    transforms: Mapped[list] = mapped_column(Json, default=list)
+    headers: Mapped[dict] = mapped_column(Json, default=dict)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=10)
+    retry_count: Mapped[int] = mapped_column(Integer, default=2)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+class Delivery(Base):
+    __tablename__ = "deliveries"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("captured_requests.id"), index=True)
+    rule_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("forwarding_rules.id"), index=True)
+    attempt: Mapped[int] = mapped_column(Integer, default=0)
+    state: Mapped[str] = mapped_column(String(20), default="PENDING", index=True)
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(100), index=True)
+    resource_type: Mapped[str] = mapped_column(String(100))
+    resource_id: Mapped[str] = mapped_column(String(64))
+    metadata_: Mapped[dict] = mapped_column("metadata", Json, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
