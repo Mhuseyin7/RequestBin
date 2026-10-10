@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from ..database import get_db
+from ..database import SessionLocal, get_db
 from ..config import get_settings
 from ..models import CapturedRequest, Delivery, Endpoint, ForwardingRule
 from ..services.rate_limit import enforce
@@ -42,6 +42,11 @@ async def capture(endpoint_token: str, request: Request, db: AsyncSession = Depe
     return Response(status_code=204, headers={"X-RequestBinX-Request-Id": str(item.id)})
 @router.websocket("/ws/h/{endpoint_token}")
 async def stream(endpoint_token: str, websocket: WebSocket):
+    async with SessionLocal() as db:
+        endpoint = await db.scalar(select(Endpoint).where(Endpoint.token == endpoint_token, Endpoint.enabled.is_(True)))
+    if not endpoint:
+        await websocket.close(code=1008, reason="Unknown endpoint")
+        return
     await hub.connect(endpoint_token, websocket)
     try:
         while True: await websocket.receive_text()

@@ -13,4 +13,7 @@ class FileBodyStorage:
     def get(self, name: str) -> bytes:
         if not name or Path(name).name != name: raise ValueError("Invalid storage key")
         return (self.root / name).read_bytes()
+    def delete(self, name: str | None) -> None:
+        if not name or Path(name).name != name: return
+        (self.root / name).unlink(missing_ok=True)
 storage = FileBodyStorage()

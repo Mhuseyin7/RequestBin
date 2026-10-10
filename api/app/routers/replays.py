@@ -8,6 +8,7 @@ from ..models import CapturedRequest, Endpoint, Replay
 from ..schemas import ReplayIn
 from ..security import current_user_id
 from ..services.ssrf import validate_target
+from ..services.storage import storage
 
 router = APIRouter(prefix="/api/v1", tags=["replays"])
 @router.post("/requests/{request_id}/replay", status_code=201)
@@ -18,7 +19,8 @@ async def replay(request_id: uuid.UUID, payload: ReplayIn, user_id: str = Depend
     started = time.perf_counter()
     try:
         async with httpx.AsyncClient(follow_redirects=False, timeout=10) as client:
-            response = await client.request(payload.method, str(payload.target_url), headers=payload.headers, content=payload.body)
+            content = payload.body if payload.body is not None else (storage.get(original.body_path) if original.body_path else None)
+            response = await client.request(payload.method, str(payload.target_url), headers=payload.headers, content=content)
         record.status_code, record.response_headers, record.response_body = response.status_code, dict(response.headers), response.text[:100_000]
     except httpx.HTTPError as exc: record.error = str(exc)
     record.latency_ms = int((time.perf_counter()-started)*1000); await db.commit(); await db.refresh(record)

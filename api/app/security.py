@@ -23,7 +23,7 @@ def make_jwt(user_id: str):
     return jwt.encode(claims, get_settings().jwt_secret, algorithm="HS256")
 def required_api_scope(request: Request) -> str | None:
     method, path = request.method, request.url.path
-    if path.endswith("/api-keys"): return "bins:read" if method == "GET" else None
+    if path.endswith("/api-keys"): return "bins:read" if method == "GET" else "bins:write"
     if "/replay" in path: return "requests:replay"
     if path.endswith("/requests") or "/requests/" in path: return "requests:delete" if method == "DELETE" else "requests:read"
     if "/endpoints" in path and method in {"POST", "DELETE"}: return "bins:write"

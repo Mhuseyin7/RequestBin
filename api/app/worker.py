@@ -2,7 +2,7 @@
 import asyncio, json, logging, time
 from datetime import datetime, timedelta, timezone
 import httpx
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from .database import SessionLocal
 from .models import CapturedRequest, Delivery, Endpoint, ForwardingRule
 from .services.ssrf import validate_target
@@ -17,8 +17,11 @@ async def prune_expired() -> int:
             items = (await db.scalars(select(CapturedRequest).where(CapturedRequest.endpoint_id == endpoint.id))).all()
             for item in items:
                 if item.body_path:
-                    try: (storage.root / item.body_path).unlink(missing_ok=True)
+                    try: storage.delete(item.body_path)
                     except OSError as exc: logger.warning("body_delete_failed endpoint=%s error=%s", endpoint.id, exc)
+            request_ids = [item.id for item in items]
+            if request_ids: await db.execute(delete(Delivery).where(Delivery.request_id.in_(request_ids)))
+            await db.execute(delete(ForwardingRule).where(ForwardingRule.endpoint_id == endpoint.id))
             await db.delete(endpoint)
         await db.commit(); return len(expired)
 async def dispatch_deliveries() -> int:
@@ -29,16 +32,19 @@ async def dispatch_deliveries() -> int:
             if not request or not rule or not rule.enabled: delivery.state = "CANCELLED"; continue
             delivery.attempt += 1; started = time.perf_counter()
             try:
-                validate_target(rule.target_url); body_value: object = request.body_preview or ""
+                validate_target(rule.target_url)
+                raw_body = storage.get(request.body_path) if request.body_path else (request.body_preview or "").encode()
+                body_value: object = raw_body
                 if request.content_type and "json" in request.content_type:
-                    try: body_value = json.loads(request.body_preview or "")
+                    try: body_value = json.loads(raw_body.decode("utf-8"))
                     except json.JSONDecodeError: pass
                 body_value, headers = apply(body_value, {**request.headers, **rule.headers}, rule.transforms)
-                content = json.dumps(body_value) if isinstance(body_value, (dict, list)) else str(body_value)
+                headers = {key: value for key, value in headers.items() if key.lower() not in {"host", "content-length", "connection", "transfer-encoding"}}
+                content = json.dumps(body_value) if isinstance(body_value, (dict, list)) else (body_value if isinstance(body_value, bytes) else str(body_value).encode())
                 async with httpx.AsyncClient(follow_redirects=False, timeout=rule.timeout_seconds) as client: response = await client.request(request.method, rule.target_url, headers=headers, content=content)
                 delivery.status_code = response.status_code; delivery.state = "SUCCEEDED" if response.is_success else "FAILED"
                 if not response.is_success: delivery.error = f"Target returned HTTP {response.status_code}"
-            except (httpx.HTTPError, ValueError) as exc: delivery.error = str(exc); delivery.state = "FAILED"
+            except (httpx.HTTPError, OSError, ValueError) as exc: delivery.error = str(exc); delivery.state = "FAILED"
             delivery.latency_ms = int((time.perf_counter() - started) * 1000)
             if delivery.state == "FAILED" and delivery.attempt <= rule.retry_count:
                 delivery.state = "PENDING"; delivery.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=2 ** delivery.attempt)

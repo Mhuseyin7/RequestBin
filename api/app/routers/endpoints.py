@@ -1,13 +1,14 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
-from ..models import CapturedRequest, Endpoint
+from ..models import CapturedRequest, Delivery, Endpoint, ForwardingRule
 from ..schemas import EndpointIn
 from ..security import current_user_id, token
 from ..services.redaction import redact_headers
 from ..services.audit import audit
+from ..services.storage import storage
 
 router = APIRouter(prefix="/api/v1", tags=["endpoints"])
 async def owned(endpoint_id: uuid.UUID, user_id: str, db: AsyncSession) -> Endpoint:
@@ -35,4 +36,10 @@ async def request_detail(request_id: uuid.UUID, user_id: str = Depends(current_u
     return {"id":str(row.id), "method":row.method, "path":row.path, "query":row.query, "headers":redact_headers(row.headers), "cookies":row.cookies, "body":row.body_preview, "body_size":row.body_size, "source_ip":row.source_ip, "content_type":row.content_type, "protocol":row.protocol, "user_agent":row.user_agent, "received_at":row.received_at}
 @router.delete("/endpoints/{endpoint_id}", status_code=204)
 async def delete_endpoint(endpoint_id: uuid.UUID, user_id: str = Depends(current_user_id), db: AsyncSession = Depends(get_db)):
-    endpoint = await owned(endpoint_id, user_id, db); await audit(db, user_id, "endpoint.delete", "endpoint", str(endpoint.id)); await db.delete(endpoint); await db.commit()
+    endpoint = await owned(endpoint_id, user_id, db)
+    requests = (await db.scalars(select(CapturedRequest).where(CapturedRequest.endpoint_id == endpoint.id))).all()
+    for item in requests: storage.delete(item.body_path)
+    request_ids = [item.id for item in requests]
+    if request_ids: await db.execute(delete(Delivery).where(Delivery.request_id.in_(request_ids)))
+    await db.execute(delete(ForwardingRule).where(ForwardingRule.endpoint_id == endpoint.id))
+    await audit(db, user_id, "endpoint.delete", "endpoint", str(endpoint.id)); await db.delete(endpoint); await db.commit()
