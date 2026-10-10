@@ -22,7 +22,7 @@ async def replay(request_id: uuid.UUID, payload: ReplayIn, user_id: str = Depend
     validate_target(str(payload.target_url)); record = Replay(request_id=request_id, target_url=str(payload.target_url)); db.add(record); await db.flush()
     started = time.perf_counter()
     try:
-        async with httpx.AsyncClient(follow_redirects=False, timeout=10) as client:
+        async with httpx.AsyncClient(follow_redirects=False, trust_env=False, timeout=10) as client:
             content = payload.body if payload.body is not None else (storage.get(original.body_path) if original.body_path else None)
             response = await client.request(payload.method, str(payload.target_url), headers=payload.headers, content=content)
         record.status_code, record.response_headers, record.response_body = response.status_code, dict(response.headers), response.text[:100_000]

@@ -41,7 +41,7 @@ async def dispatch_deliveries() -> int:
                 body_value, headers = apply(body_value, {**request.headers, **rule.headers}, rule.transforms)
                 headers = {key: value for key, value in headers.items() if key.lower() not in {"host", "content-length", "connection", "transfer-encoding"}}
                 content = json.dumps(body_value) if isinstance(body_value, (dict, list)) else (body_value if isinstance(body_value, bytes) else str(body_value).encode())
-                async with httpx.AsyncClient(follow_redirects=False, timeout=rule.timeout_seconds) as client: response = await client.request(request.method, rule.target_url, headers=headers, content=content)
+                async with httpx.AsyncClient(follow_redirects=False, trust_env=False, timeout=rule.timeout_seconds) as client: response = await client.request(request.method, rule.target_url, headers=headers, content=content)
                 delivery.status_code = response.status_code; delivery.state = "SUCCEEDED" if response.is_success else "FAILED"
                 if not response.is_success: delivery.error = f"Target returned HTTP {response.status_code}"
             except (httpx.HTTPError, OSError, ValueError) as exc: delivery.error = str(exc); delivery.state = "FAILED"
