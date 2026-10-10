@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       JWT_SECRET: ci-only-secret-that-is-long-enough-for-compose
+      POSTGRES_PASSWORD: ci-only-database-password
     steps:
       - uses: actions/checkout@v4
       - run: docker compose build

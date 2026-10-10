@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:17-alpine
-    environment: { POSTGRES_DB: requestbinx, POSTGRES_USER: requestbinx, POSTGRES_PASSWORD: requestbinx }
+    environment: { POSTGRES_DB: requestbinx, POSTGRES_USER: requestbinx, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}" }
     volumes: [postgres_data:/var/lib/postgresql/data]
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U requestbinx -d requestbinx"], interval: 5s, timeout: 5s, retries: 10 }
   redis:
@@ -10,7 +10,7 @@ services:
   api:
     build: ./api
     environment:
-      DATABASE_URL: "postgresql+asyncpg://requestbinx:requestbinx@postgres:5432/requestbinx"
+      DATABASE_URL: "postgresql+asyncpg://requestbinx:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/requestbinx"
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in .env}"
       BODY_STORAGE_PATH: /data/bodies
       CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:3000}"
@@ -21,7 +21,7 @@ services:
     build: ./api
     command: ["python", "-m", "app.worker"]
     environment:
-      DATABASE_URL: "postgresql+asyncpg://requestbinx:requestbinx@postgres:5432/requestbinx"
+      DATABASE_URL: "postgresql+asyncpg://requestbinx:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/requestbinx"
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in .env}"
       BODY_STORAGE_PATH: /data/bodies
       CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:3000}"

@@ -37,7 +37,7 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-`.env` dosyasındaki `JWT_SECRET` değerini minimum 32 karakterlik random bir secret ile değiştir. Ardından stack'i başlat:
+`.env` dosyasındaki `JWT_SECRET` ve `POSTGRES_PASSWORD` değerlerini güçlü random secret'larla değiştir. Ardından stack'i başlat:
 
 ```powershell
 docker compose up --build
