@@ -13,6 +13,7 @@ services:
       DATABASE_URL: "postgresql+asyncpg://requestbinx:requestbinx@postgres:5432/requestbinx"
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in .env}"
       BODY_STORAGE_PATH: /data/bodies
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:3000}"
     volumes: [body_data:/data/bodies]
     ports: ["8000:8000"]
     depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_healthy } }
@@ -23,11 +24,12 @@ services:
       DATABASE_URL: "postgresql+asyncpg://requestbinx:requestbinx@postgres:5432/requestbinx"
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET in .env}"
       BODY_STORAGE_PATH: /data/bodies
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:3000}"
     volumes: [body_data:/data/bodies]
     depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_healthy } }
   web:
     build: ./web
-    environment: { NEXT_PUBLIC_API_URL: http://localhost:8000 }
+    environment: { NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:8000}" }
     ports: ["3000:3000"]
     depends_on: [api]
 volumes: { postgres_data: {}, body_data: {} }

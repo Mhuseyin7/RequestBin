@@ -23,11 +23,12 @@ def make_jwt(user_id: str):
     return jwt.encode(claims, get_settings().jwt_secret, algorithm="HS256")
 def required_api_scope(request: Request) -> str | None:
     method, path = request.method, request.url.path
-    if path.endswith("/api-keys"): return "bins:read" if method == "GET" else "bins:write"
+    if path.endswith("/api-keys"): return "bins:read" if method == "GET" else "__jwt_only__"
     if "/replay" in path: return "requests:replay"
     if path.endswith("/requests") or "/requests/" in path: return "requests:delete" if method == "DELETE" else "requests:read"
+    if path.rstrip("/").endswith("/endpoints") and method == "GET": return "bins:read"
     if "/endpoints" in path and method in {"POST", "DELETE"}: return "bins:write"
-    return None
+    return "__jwt_only__"
 async def current_user_id(request: Request, credentials: HTTPAuthorizationCredentials = bearer, x_api_key: str | None = Header(default=None), db: AsyncSession = Depends(get_db)):
     if x_api_key:
         digest = hashlib.sha256(x_api_key.encode()).hexdigest()
