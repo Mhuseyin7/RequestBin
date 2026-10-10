@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     max_body_bytes: int = 1_048_576
     allow_unsafe_outbound: bool = False
     anonymous_bins_enabled: bool = False
-    body_storage_path: str = "/data/bodies"
+    body_storage_path: str = "./data/bodies"
     redis_url: str = "redis://redis:6379/0"
     rate_limit_receive_per_minute: int = 120
     rate_limit_auth_per_minute: int = 10
