@@ -28,7 +28,9 @@ async def members(org_id: uuid.UUID, user_id: str = Depends(current_user_id), db
     return [{"id":str(mid),"email":email,"role":role} for email,role,mid in rows]
 @router.post("/{org_id}/members", status_code=201)
 async def add_member(org_id: uuid.UUID, payload: MemberIn, user_id: str = Depends(current_user_id), db: AsyncSession = Depends(get_db)):
-    await require_role(org_id, user_id, db, {"OWNER","ADMIN"}); member_user = await db.scalar(select(User).where(User.email == payload.email.lower()))
+    actor = await require_role(org_id, user_id, db, {"OWNER","ADMIN"})
+    if payload.role in {"OWNER", "ADMIN"} and actor.role != "OWNER": raise HTTPException(403, "Only owners can grant administrative roles")
+    member_user = await db.scalar(select(User).where(User.email == payload.email.lower()))
     if not member_user: raise HTTPException(404, "User must register before being added")
     if await db.scalar(select(Membership).where(Membership.organization_id == org_id, Membership.user_id == member_user.id)): raise HTTPException(409, "User is already a member")
     item = Membership(organization_id=org_id, user_id=member_user.id, role=payload.role); db.add(item); await audit(db, user_id, "organization.member_add", "organization", str(org_id), {"email":payload.email,"role":payload.role}); await db.commit()

@@ -17,14 +17,19 @@ async def capture(endpoint_token: str, request: Request, db: AsyncSession = Depe
     await enforce(request, f"receive:{endpoint_token}", get_settings().rate_limit_receive_per_minute)
     endpoint = await db.scalar(select(Endpoint).where(Endpoint.token == endpoint_token, Endpoint.enabled.is_(True)))
     if not endpoint or (endpoint.expires_at and endpoint.expires_at < datetime.now(timezone.utc)): raise HTTPException(404, "Endpoint not found")
+    limit = min(endpoint.max_body_size, get_settings().max_body_bytes)
     content_length = request.headers.get("content-length")
     if content_length:
         try: declared_size = int(content_length)
         except ValueError: raise HTTPException(400, "Invalid Content-Length")
         if declared_size < 0: raise HTTPException(400, "Invalid Content-Length")
-        if declared_size > endpoint.max_body_size: raise HTTPException(413, "Request body too large")
-    body = await request.body()
-    if len(body) > endpoint.max_body_size: raise HTTPException(413, "Request body too large")
+        if declared_size > limit: raise HTTPException(413, "Request body too large")
+    chunks: list[bytes] = []; body_size = 0
+    async for chunk in request.stream():
+        body_size += len(chunk)
+        if body_size > limit: raise HTTPException(413, "Request body too large")
+        chunks.append(chunk)
+    body = b"".join(chunks)
     headers = dict(request.headers); content_type = headers.get("content-type")
     text = body.decode("utf-8", errors="replace") if (not content_type or any(x in content_type for x in ("json", "text", "xml", "form"))) else "[binary body withheld]"
     item = CapturedRequest(endpoint_id=endpoint.id, method=request.method, path=request.url.path, query=dict(request.query_params), headers=headers, cookies=request.cookies, content_type=content_type, body_size=len(body), body_preview=text[:100_000], source_ip=request.client.host if request.client else "unknown", protocol=request.scope.get("http_version", "unknown"), user_agent=headers.get("user-agent"))

@@ -1,9 +1,9 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
-from ..models import CapturedRequest, Delivery, Endpoint, ForwardingRule
+from ..models import CapturedRequest, Delivery, Endpoint, ForwardingRule, Membership
 from ..schemas import EndpointIn
 from ..security import current_user_id, token
 from ..services.redaction import redact_headers
@@ -12,16 +12,20 @@ from ..services.storage import storage
 
 router = APIRouter(prefix="/api/v1", tags=["endpoints"])
 async def owned(endpoint_id: uuid.UUID, user_id: str, db: AsyncSession) -> Endpoint:
-    endpoint = await db.scalar(select(Endpoint).where(Endpoint.id == endpoint_id, Endpoint.owner_id == uuid.UUID(user_id)))
+    member_orgs = select(Membership.organization_id).where(Membership.user_id == uuid.UUID(user_id))
+    endpoint = await db.scalar(select(Endpoint).where(Endpoint.id == endpoint_id, or_(Endpoint.owner_id == uuid.UUID(user_id), Endpoint.organization_id.in_(member_orgs))))
     if not endpoint: raise HTTPException(404, "Endpoint not found")
     return endpoint
 @router.get("/endpoints")
 async def list_endpoints(user_id: str = Depends(current_user_id), db: AsyncSession = Depends(get_db)):
-    rows = (await db.scalars(select(Endpoint).where(Endpoint.owner_id == uuid.UUID(user_id)).order_by(Endpoint.created_at.desc()))).all()
+    member_orgs = select(Membership.organization_id).where(Membership.user_id == uuid.UUID(user_id))
+    rows = (await db.scalars(select(Endpoint).where(or_(Endpoint.owner_id == uuid.UUID(user_id), Endpoint.organization_id.in_(member_orgs))).order_by(Endpoint.created_at.desc()))).all()
     return [{"id": str(e.id), "name": e.name, "token": e.token, "enabled": e.enabled, "created_at": e.created_at} for e in rows]
 @router.post("/endpoints", status_code=201)
 async def create_endpoint(payload: EndpointIn, user_id: str = Depends(current_user_id), db: AsyncSession = Depends(get_db)):
-    endpoint = Endpoint(owner_id=uuid.UUID(user_id), name=payload.name, token=token(), max_body_size=payload.max_body_size, expires_at=payload.expires_at)
+    member = await db.scalar(select(Membership).where(Membership.user_id == uuid.UUID(user_id)).order_by(Membership.created_at))
+    if member and member.role not in {"OWNER", "ADMIN", "DEVELOPER"}: raise HTTPException(403, "Viewer members cannot create endpoints")
+    endpoint = Endpoint(owner_id=uuid.UUID(user_id), organization_id=member.organization_id if member else None, name=payload.name, token=token(), max_body_size=payload.max_body_size, expires_at=payload.expires_at)
     db.add(endpoint); await db.flush(); await audit(db, user_id, "endpoint.create", "endpoint", str(endpoint.id), {"name": endpoint.name}); await db.commit(); await db.refresh(endpoint)
     return {"id": str(endpoint.id), "name": endpoint.name, "token": endpoint.token, "receive_url": f"/h/{endpoint.token}"}
 @router.get("/endpoints/{endpoint_id}/requests")
@@ -31,12 +35,14 @@ async def requests(endpoint_id: uuid.UUID, user_id: str = Depends(current_user_i
     return [{"id": str(r.id), "method": r.method, "path": r.path, "headers": redact_headers(r.headers), "body_preview": r.body_preview, "body_size": r.body_size, "source_ip": r.source_ip, "content_type": r.content_type, "received_at": r.received_at} for r in rows]
 @router.get("/requests/{request_id}")
 async def request_detail(request_id: uuid.UUID, user_id: str = Depends(current_user_id), db: AsyncSession = Depends(get_db)):
-    row = await db.scalar(select(CapturedRequest).join(Endpoint).where(CapturedRequest.id == request_id, Endpoint.owner_id == uuid.UUID(user_id)))
+    member_orgs = select(Membership.organization_id).where(Membership.user_id == uuid.UUID(user_id))
+    row = await db.scalar(select(CapturedRequest).join(Endpoint).where(CapturedRequest.id == request_id, or_(Endpoint.owner_id == uuid.UUID(user_id), Endpoint.organization_id.in_(member_orgs))))
     if not row: raise HTTPException(404, "Request not found")
     return {"id":str(row.id), "method":row.method, "path":row.path, "query":row.query, "headers":redact_headers(row.headers), "cookies":row.cookies, "body":row.body_preview, "body_size":row.body_size, "source_ip":row.source_ip, "content_type":row.content_type, "protocol":row.protocol, "user_agent":row.user_agent, "received_at":row.received_at}
 @router.delete("/endpoints/{endpoint_id}", status_code=204)
 async def delete_endpoint(endpoint_id: uuid.UUID, user_id: str = Depends(current_user_id), db: AsyncSession = Depends(get_db)):
     endpoint = await owned(endpoint_id, user_id, db)
+    if endpoint.owner_id != uuid.UUID(user_id): raise HTTPException(403, "Only the endpoint owner can delete it")
     requests = (await db.scalars(select(CapturedRequest).where(CapturedRequest.endpoint_id == endpoint.id))).all()
     for item in requests: storage.delete(item.body_path)
     request_ids = [item.id for item in requests]

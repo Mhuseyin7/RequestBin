@@ -13,8 +13,10 @@ def _path_set(value: dict, path: str, item: Any) -> None:
     current[keys[-1]] = item
 def matches(condition: dict, headers: dict[str, str], body: Any) -> bool:
     if not condition: return True
-    source = headers if condition.get("source") == "header" else body
-    return _path_get(source, condition.get("path", "")) == condition.get("equals")
+    if condition.get("source") == "header":
+        source, path = {key.lower(): value for key, value in headers.items()}, str(condition.get("path", "")).lower()
+    else: source, path = body, str(condition.get("path", ""))
+    return _path_get(source, path) == condition.get("equals")
 def apply(body: Any, headers: dict[str, str], transforms: list[dict]) -> tuple[Any, dict[str, str]]:
     body, headers = copy.deepcopy(body), copy.deepcopy(headers)
     for item in transforms:
